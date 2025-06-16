@@ -52,7 +52,7 @@
 "use strict";
 
 // ========== SETTINGS ===========
-const PROXY_PREFIX = "/b/"; // This is your Bare backend on Vercel
+const PROXY_PREFIX = "/b/uv/";
 
 // ========== Extension Panel + Helpers ===========
 function addExtensionPanel() {
@@ -467,10 +467,7 @@ function getTargetUrl(raw) {
   }
   return raw;
 }
-function proxiedSrc(url) {
-  // Use /b/https:/example.com
-  return PROXY_PREFIX + url.replace(/^https?:\/\//, "");
-}
+
 function main() {
   // Wait for Ultraviolet config to be ready
   function ready(fn) {
@@ -491,8 +488,8 @@ function main() {
     iframe.style.width = "100vw";
     iframe.style.height = "100vh";
     iframe.style.border = "none";
-    // Instead of /uv/, load proxied through /b/
-    iframe.src = PROXY_PREFIX + "uv/" + uvEncoded;
+    // Correct UV-on-vercel/Bare path, always /b/uv/<ENCODED>
+    iframe.src = PROXY_PREFIX + uvEncoded;
     document.body.innerHTML = "";
     document.body.appendChild(iframe);
 
@@ -525,8 +522,8 @@ function main() {
       else removeFont(iframe);
       let host = "";
       try {
-        let proxiedSrcStr = iframe.src.replace(location.origin + PROXY_PREFIX, '');
-        host = proxiedSrcStr.split('/')[1];
+        let decoded = __uv$config.decodeUrl(uvEncoded);
+        host = (new URL(decoded)).host;
       } catch (e) {}
       if (host === "discord.com" && vencordToggle.checked) {
         injectVencord(iframe);
