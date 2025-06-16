@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ultraviolet Embed</title>
+  <link rel="icon" type="image/png" href="uv/favicon.ico" id="dynamic-favicon">
+  <style>
+    html, body { margin:0; padding:0; width:100vw; height:100vh; background:#18191a; }
+    #uv-extensions-panel { font-family: Inter,IBM Plex Mono,Roboto,sans-serif; }
+    #userscripts-list { max-height: 130px; overflow-y: auto; background: #191a1f; border-radius: 7px; padding: 6px; margin-bottom: 9px; }
+    #userscripts-list label { display: flex; align-items: center; margin-bottom: 4px; }
+    #userscripts-list button { margin-left: auto; }
+    .modal-bg {
+      position: fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:10000; display: flex; align-items: center; justify-content: center;
+    }
+    .modal { background: #23242b; color: #fff; border-radius: 14px; padding: 20px; width: 350px; box-shadow: 0 4px 24px #000a; }
+    .modal input, .modal textarea { width: 100%; margin-bottom: 12px; padding:7px; border-radius:6px; border:1px solid #444; background: #18191a; color: #fff; }
+    .modal-btn-row { display:flex; justify-content: flex-end; gap:10px; }
+    #uv-extensions-panel-header {
+      cursor: move;
+      user-select: none;
+      font-size: 1.13em;
+      font-weight: 600;
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #uv-extensions-panel-close {
+      background: #18191a;
+      border: none;
+      color: #fff;
+      font-size: 1.13em;
+      font-weight: bold;
+      border-radius: 7px;
+      padding: 2px 10px;
+      margin-left: 10px;
+      cursor: pointer;
+      transition: background .17s;
+    }
+    #uv-extensions-panel-close:hover {
+      background: #ff5555;
+      color: #fff;
+    }
+    #uv-url-bar {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 10000;
+      background: #23242b;
+      padding: 8px 12px 8px 13px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 12px #0007;
+      gap: 7px;
+    }
+    #uv-url-bar input {
+      background: #191a1f;
+      color: #fff;
+      border-radius: 7px;
+      border: none;
+      font-size: 1em;
+      padding: 5px 11px;
+      width: 260px;
+      margin-right: 7px;
+      outline: none;
+    }
+    #uv-url-bar button {
+      background: #0a84ff;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 5px 15px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background .17s;
+    }
+    #uv-url-bar button:hover {
+      background: #005fcc;
+    }
+    @media (max-width: 550px) {
+      #uv-url-bar input { width: 120px; font-size: 0.98em; }
+      #uv-extensions-panel { max-width: 96vw; }
+    }
+  </style>
+  <script src="uv/uv.bundle.js"></script>
+  <script src="uv/uv.config.js"></script>
+</head>
+<body>
+<script>
+"use strict";
+
+// ========== SETTINGS ===========
+const PROXY_PREFIX = "/b/uv/";
+
+// ========== Extension Panel + Helpers ===========
+function addExtensionPanel() {
+  if (document.getElementById('uv-extensions-panel')) return;
+  const panel = document.createElement('div');
+  panel.id = "uv-extensions-panel";
+  panel.style.position = "fixed";
+  panel.style.top = "60px";
+  panel.style.right = "10px";
+  panel.style.zIndex = "9999";
+  panel.style.background = "#23242b";
+  panel.style.padding = "18px 18px 12px 18px";
+  panel.style.borderRadius = "14px";
+  panel.style.boxShadow = "0 4px 24px #0007";
+  panel.style.maxWidth = "360px";
+  panel.style.color = "#fff";
+  panel.innerHTML = `
+    <div id="uv-extensions-panel-header">
+      Extensions
+      <button id="uv-extensions-panel-close" title="Close">&times;</button>
+    </div>
+    <label style="display:flex;align-items:center;margin-bottom:8px">
+      <input type="checkbox" id="enable-darkmode" style="margin-right:7px">
+      Always Dark Mode
+    </label>
+    <label style="display:flex;align-items:center;margin-bottom:8px">
+      <input type="checkbox" id="enable-vencord" style="margin-right:7px">
+      Vencord (Discord only)
+    </label>
+    <label style="display:flex;align-items:center;margin-bottom:8px">
+      <input type="checkbox" id="enable-nightshift" style="margin-right:7px">
+      Night Shift
+      <input type="range" min="2000" max="6500" step="100" id="nightshift-temp" style="margin-left:10px;width:110px">
+      <span id="nightshift-val" style="margin-left:7px;font-size:0.96em"></span>
+    </label>
+    <label style="display:flex;align-items:center;margin-bottom:8px">
+      <span style="margin-right:7px;">Font:</span>
+      <select id="font-select" style="background:#18191a;color:#fff;border-radius:6px;padding:4px 7px;">
+        <option value="">Default</option>
+        <option value="OpenDyslexic">OpenDyslexic</option>
+        <option value="Comic Sans MS, Comic Sans, cursive">Comic Sans</option>
+        <option value="IBM Plex Mono, monospace">IBM Plex Mono</option>
+        <option value="Inter, sans-serif">Inter</option>
+        <option value="Arial, Helvetica, sans-serif">Arial</option>
+        <option value="Hind, sans-serif">Hind</option>
+      </select>
+    </label>
+    <button id="screenshot-btn" style="margin-top:6px;background:#0a84ff;border:none;color:#fff;border-radius:7px;padding:6px 14px;font-size:1em;cursor:pointer;">Screenshot</button>
+    <hr style="border:0;border-top:1px solid #393a40;margin:15px 0 11px 0"/>
+    <div style="font-size:1.13em;font-weight:600;margin:12px 0 7px 0">User Scripts</div>
+    <div id="userscripts-list"></div>
+    <button id="add-userscript-btn" style="margin-top:4px;background:#2ecc40;border:none;color:#fff;border-radius:7px;padding:6px 14px;font-size:1em;cursor:pointer;">Add Script</button>
+  `;
+  document.body.appendChild(panel);
+
+  makePanelDraggable(panel, document.getElementById('uv-extensions-panel-header'));
+  document.getElementById('uv-extensions-panel-close').onclick = function() {
+    panel.style.display = "none";
+    if (!document.getElementById("uv-extensions-open-btn")) {
+      const btn = document.createElement("button");
+      btn.id = "uv-extensions-open-btn";
+      btn.textContent = "⚙️";
+      btn.title = "Open Extensions";
+      btn.style.position = "fixed";
+      btn.style.top = "60px";
+      btn.style.right = "10px";
+      btn.style.zIndex = "9999";
+      btn.style.background = "#0a84ff";
+      btn.style.color = "#fff";
+      btn.style.border = "none";
+      btn.style.borderRadius = "50%";
+      btn.style.fontSize = "1.4em";
+      btn.style.width = "44px";
+      btn.style.height = "44px";
+      btn.style.cursor = "pointer";
+      btn.style.boxShadow = "0 4px 24px #0007";
+      btn.onclick = function() {
+        panel.style.display = "";
+        btn.remove();
+      };
+      document.body.appendChild(btn);
+    }
+  };
+}
+function makePanelDraggable(panel, header) {
+  let offsetX = 0, offsetY = 0, startX = 0, startY = 0, dragging = false;
+  header.onmousedown = function(e) {
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = panel.getBoundingClientRect();
+    offsetX = startX - rect.left;
+    offsetY = startY - rect.top;
+    document.body.style.userSelect = "none";
+    document.addEventListener('mousemove', dragMove);
+    document.addEventListener('mouseup', dragEnd);
+  };
+  function dragMove(e) {
+    if (!dragging) return;
+    panel.style.left = (e.clientX - offsetX) + "px";
+    panel.style.top = (e.clientY - offsetY) + "px";
+    panel.style.right = "";
+    panel.style.bottom = "";
+    panel.style.position = "fixed";
+  }
+  function dragEnd() {
+    dragging = false;
+    document.body.style.userSelect = "";
+    document.removeEventListener('mousemove', dragMove);
+    document.removeEventListener('mouseup', dragEnd);
+  }
+}
+
+// ========== User Scripts: LocalStorage ===========
+function loadUserScripts() {
+  try {
+    return JSON.parse(localStorage.getItem("uv-userscripts") || "[]");
+  } catch {
+    return [];
+  }
+}
+function saveUserScripts(scripts) {
+  localStorage.setItem("uv-userscripts", JSON.stringify(scripts));
+}
+let userscripts = loadUserScripts();
+function fetchUserScripts() {
+  userscripts = loadUserScripts();
+  renderUserScriptsList();
+  return Promise.resolve(userscripts);
+}
+function addUserScript(name, code) {
+  userscripts.push({ id: Date.now().toString(), name, code });
+  saveUserScripts(userscripts);
+  return fetchUserScripts();
+}
+function updateUserScript(id, name, code) {
+  let idx = userscripts.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    userscripts[idx].name = name;
+    userscripts[idx].code = code;
+  }
+  saveUserScripts(userscripts);
+  return fetchUserScripts();
+}
+function deleteUserScript(id) {
+  userscripts = userscripts.filter(s => s.id !== id);
+  saveUserScripts(userscripts);
+  return fetchUserScripts();
+}
+function renderUserScriptsList() {
+  const list = document.getElementById("userscripts-list");
+  if (!list) return;
+  list.innerHTML = "";
+  userscripts.forEach(script => {
+    const label = document.createElement("label");
+    label.innerHTML = `<span style="margin-right:7px; font-weight:500;">${script.name}</span>`;
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Edit";
+    editBtn.style = "background:#0a84ff;color:#fff;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;";
+    editBtn.onclick = () => openUserScriptModal(script);
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "Delete";
+    delBtn.style = "background:#ff5555;color:#fff;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;margin-left:8px;";
+    delBtn.onclick = () => deleteUserScript(script.id);
+    label.appendChild(editBtn);
+    label.appendChild(delBtn);
+    list.appendChild(label);
+  });
+}
+function openUserScriptModal(script) {
+  const modalBg = document.createElement("div");
+  modalBg.className = "modal-bg";
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.innerHTML = `
+    <h3 style="margin-bottom:10px">${script ? "Edit" : "Add"} Userscript</h3>
+    <input type="text" id="us-name" placeholder="Script Name" value="${script ? script.name : ""}" />
+    <textarea id="us-code" placeholder="JavaScript code here..." rows="10">${script ? script.code : ""}</textarea>
+    <div class="modal-btn-row">
+      <button id="us-cancel-btn" style="background:#333;color:#fff;border:none;border-radius:6px;padding:5px 14px;">Cancel</button>
+      <button id="us-save-btn" style="background:#2ecc40;color:#fff;border:none;border-radius:6px;padding:5px 14px;">Save</button>
+    </div>
+  `;
+  modalBg.appendChild(modal);
+  document.body.appendChild(modalBg);
+  document.getElementById("us-cancel-btn").onclick = () => modalBg.remove();
+  document.getElementById("us-save-btn").onclick = () => {
+    const name = document.getElementById("us-name").value.trim();
+    const code = document.getElementById("us-code").value;
+    if (!name || !code) return alert("Both name and code are required.");
+    if (script) updateUserScript(script.id, name, code).then(() => modalBg.remove());
+    else addUserScript(name, code).then(() => modalBg.remove());
+  };
+}
+function injectUserScripts(iframe) {
+  if (!iframe.contentDocument) return;
+  userscripts.forEach(script => {
+    try {
+      const el = iframe.contentDocument.createElement("script");
+      el.textContent = script.code;
+      iframe.contentDocument.head.appendChild(el);
+    } catch(e){}
+  });
+}
+
+// ========== Features =============
+const DARK_KEY = "uv-ext-darkmode";
+const VENCORD_KEY = "uv-ext-vencord";
+const NIGHT_KEY = "uv-ext-nightshift";
+const NIGHT_TEMP_KEY = "uv-ext-nightshift-temp";
+const FONT_KEY = "uv-ext-font";
+function getSetting(key, def) {
+  const v = localStorage.getItem(key);
+  if (v === null) return def;
+  if (key === NIGHT_TEMP_KEY) return parseInt(v);
+  return v === "true";
+}
+function setSetting(key, val) {
+  localStorage.setItem(key, val);
+}
+const darkModeCSS = `
+html, body, iframe, div, section, article, header, footer, nav, aside {
+  background: #18191a !important;
+  color: #e4e6eb !important;
+}
+* {
+  background-color: inherit !important;
+  color: inherit !important;
+  border-color: #333 !important;
+}
+`;
+function getNightShiftCSS(temp) {
+  const t = Math.max(2000, Math.min(6500, temp));
+  const ratio = 1 - (t - 2000) / (6500 - 2000);
+  const sepia = 0.1 + 0.9 * ratio;
+  const brightness = 1 - 0.12 * ratio;
+  const contrast = 1 + 0.11 * ratio;
+  const filter = `sepia(${sepia}) brightness(${brightness}) contrast(${contrast})`;
+  return `html,body,iframe,div,section,article,header,footer,nav,aside{filter:${filter} !important;}`;
+}
+function getFontCSS(font) {
+  if (!font) return "";
+  return `html,body,*{font-family:${font} !important;}`;
+}
+function injectDarkMode(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    let style = doc.getElementById('injected-darkmode-style');
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'injected-darkmode-style';
+      doc.head.appendChild(style);
+    }
+    style.textContent = darkModeCSS;
+  } catch (e) {}
+}
+function removeDarkMode(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    const style = doc.getElementById('injected-darkmode-style');
+    if (style) style.remove();
+  } catch (e) {}
+}
+function injectNightShift(iframe, temp) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    let style = doc.getElementById('injected-nightshift-style');
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'injected-nightshift-style';
+      doc.head.appendChild(style);
+    }
+    style.textContent = getNightShiftCSS(temp);
+  } catch(e){}
+}
+function removeNightShift(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    const style = doc.getElementById('injected-nightshift-style');
+    if (style) style.remove();
+  } catch(e){}
+}
+function injectFont(iframe, font) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    let style = doc.getElementById('injected-font-style');
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'injected-font-style';
+      doc.head.appendChild(style);
+    }
+    style.textContent = getFontCSS(font);
+    if (font === "OpenDyslexic") {
+      let link = doc.getElementById('font-opendyslexic');
+      if (!link) {
+        link = doc.createElement('link');
+        link.id = 'font-opendyslexic';
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic/webkit/OpenDyslexic-Regular.css';
+        doc.head.appendChild(link);
+      }
+    }
+  } catch(e){}
+}
+function removeFont(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    const style = doc.getElementById('injected-font-style');
+    if (style) style.remove();
+    const link = doc.getElementById('font-opendyslexic');
+    if (link) link.remove();
+  } catch(e){}
+}
+function injectVencord(iframe) {
+  fetch("https://cdn.jsdelivr.net/gh/Vencord/builds@main/browser.js")
+    .then(r => r.text())
+    .then(jsText => {
+      const script = iframe.contentDocument.createElement("script");
+      script.textContent = jsText;
+      iframe.contentDocument.head.appendChild(script);
+    });
+  fetch("https://cdn.jsdelivr.net/gh/Vencord/builds@main/browser.css")
+    .then(r => r.text())
+    .then(cssText => {
+      const style = iframe.contentDocument.createElement("style");
+      style.textContent = cssText;
+      iframe.contentDocument.head.appendChild(style);
+    });
+}
+function handleScreenshotRequest(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    if (iframe.contentWindow.html2canvas) {
+      iframe.contentWindow.html2canvas(doc.body).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'screenshot.png';
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+      return;
+    }
+  } catch(e){}
+  if (window.html2canvas) {
+    window.html2canvas(iframe).then(canvas => {
+      const link = document.createElement('a');
+      link.download = 'screenshot.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    });
+  } else {
+    alert('Screenshot failed. Screenshot tool requires html2canvas support and may not work on all sites due to cross-origin restrictions.');
+  }
+}
+
+// ========== Title & Favicon from iframe ==========
+function setTitleAndFaviconFromIframe(iframe) {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    // Get title
+    const docTitle = doc.querySelector("title");
+    if (docTitle && docTitle.textContent.trim()) {
+      document.title = docTitle.textContent.trim();
+    } else {
+      document.title = "Ultraviolet Embed";
+    }
+    // Get favicon
+    let faviconUrl = null;
+    let iconLink = doc.querySelector('link[rel~="icon"]');
+    if (!iconLink) iconLink = doc.querySelector('link[rel="shortcut icon"]');
+    if (iconLink && iconLink.href) {
+      faviconUrl = iconLink.href;
+      if (faviconUrl.startsWith('/')) {
+        let proxiedSrc = iframe.src.replace(location.origin + PROXY_PREFIX, '');
+        let urlObj = new URL('https://' + proxiedSrc.split('/')[0]);
+        faviconUrl = urlObj.origin + faviconUrl;
+      }
+    }
+    // Set favicon
+    let fav = document.getElementById("dynamic-favicon");
+    if (!fav) {
+      fav = document.createElement("link");
+      fav.rel = "icon";
+      fav.type = "image/png";
+      fav.id = "dynamic-favicon";
+      document.head.appendChild(fav);
+    }
+    fav.href = faviconUrl || "uv/favicon.ico";
+  } catch (e) {
+    document.title = "Ultraviolet Embed";
+    // fallback favicon already set on page load
+  }
+}
+
+// ========== Main Proxy Embed Logic ==========
+function getTargetUrl(raw) {
+  raw = (raw || "").trim();
+  if (!raw) return "https://duckduckgo.com";
+  if (!/^https?:\/\//i.test(raw)) {
+    if (raw.indexOf('.') !== -1) {
+      raw = 'https://' + raw;
+    } else {
+      raw = 'https://google.com/search?q=' + encodeURIComponent(raw);
+    }
+  }
+  return raw;
+}
+
+let currentUvEncoded = null;
+let iframe = null;
+
+function loadIframeWithUrl(raw) {
+  if (!window.__uv$config || typeof __uv$config.encodeUrl !== "function") {
+    setTimeout(() => loadIframeWithUrl(raw), 20);
+    return;
+  }
+  let destUrl = getTargetUrl(raw);
+  let uvEncoded = __uv$config.encodeUrl(destUrl);
+  currentUvEncoded = uvEncoded;
+
+  if (!iframe) {
+    iframe = document.createElement("iframe");
+    iframe.id = "uv-iframe";
+    iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups";
+    iframe.allowFullscreen = true;
+    iframe.style.width = "100vw";
+    iframe.style.height = "100vh";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+  }
+  iframe.src = PROXY_PREFIX + uvEncoded;
+
+  iframe.onload = function() {
+    setTimeout(() => setTitleAndFaviconFromIframe(iframe), 100);
+    applyAllFeatures();
+  };
+}
+
+function applyAllFeatures() {
+  if (!iframe || !iframe.contentDocument) return;
+  const darkToggle = document.getElementById('enable-darkmode');
+  const vencordToggle = document.getElementById('enable-vencord');
+  const nightToggle = document.getElementById('enable-nightshift');
+  const nightTemp = document.getElementById('nightshift-temp');
+  const fontSelect = document.getElementById('font-select');
+  if (darkToggle && darkToggle.checked) injectDarkMode(iframe); else removeDarkMode(iframe);
+  if (nightToggle && nightToggle.checked) injectNightShift(iframe, parseInt(nightTemp.value));
+  else removeNightShift(iframe);
+  if (fontSelect && fontSelect.value) injectFont(iframe, fontSelect.value);
+  else removeFont(iframe);
+  let host = "";
+  try {
+    let decoded = __uv$config.decodeUrl(currentUvEncoded);
+    host = (new URL(decoded)).host;
+  } catch (e) {}
+  if (host === "discord.com" && vencordToggle && vencordToggle.checked) {
+    injectVencord(iframe);
+  }
+  injectUserScripts(iframe);
+}
+
+// ========== URL Bar Logic ==========
+function addUrlBar() {
+  if (document.getElementById('uv-url-bar')) return;
+  const urlBar = document.createElement("form");
+  urlBar.id = "uv-url-bar";
+  urlBar.autocomplete = "off";
+  urlBar.innerHTML = `
+    <input type="text" id="urlInput" placeholder="Enter URL or search" />
+    <button type="submit" id="searchButton">Go</button>
+  `;
+  document.body.appendChild(urlBar);
+
+  const urlInput = document.getElementById('urlInput');
+  const searchButton = document.getElementById('searchButton');
+
+  // Autofill with current hash if present
+  if (location.hash.slice(1).trim()) urlInput.value = decodeURIComponent(location.hash.slice(1).trim());
+
+  urlInput.addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      searchButton.click();
+    }
+  });
+
+  urlBar.onsubmit = function(event) {
+    event.preventDefault();
+    const input = urlInput.value.trim();
+    if (!input) return;
+    location.hash = encodeURIComponent(input);
+    loadIframeWithUrl(input);
+  };
+}
+
+// ========== Panel & Features Initialization ==========
+function main() {
+  // Wait for Ultraviolet config to be ready
+  function ready(fn) {
+    if (typeof __uv$config !== "undefined" && typeof __uv$config.encodeUrl === "function") fn();
+    else setTimeout(() => ready(fn), 20);
+  }
+  ready(function() {
+    addExtensionPanel();
+    addUrlBar();
+
+    const darkToggle = document.getElementById('enable-darkmode');
+    const vencordToggle = document.getElementById('enable-vencord');
+    const nightToggle = document.getElementById('enable-nightshift');
+    const nightTemp = document.getElementById('nightshift-temp');
+    const nightVal = document.getElementById('nightshift-val');
+    const fontSelect = document.getElementById('font-select');
+    const screenshotBtn = document.getElementById('screenshot-btn');
+    const addUserscriptBtn = document.getElementById('add-userscript-btn');
+
+    darkToggle.checked = getSetting(DARK_KEY, true);
+    vencordToggle.checked = getSetting(VENCORD_KEY, true);
+    nightToggle.checked = getSetting(NIGHT_KEY, false);
+    nightTemp.value = getSetting(NIGHT_TEMP_KEY, 3700);
+    nightVal.textContent = nightTemp.value + 'K';
+    fontSelect.value = getSetting(FONT_KEY, "");
+
+    darkToggle.addEventListener('change', () => {
+      setSetting(DARK_KEY, darkToggle.checked);
+      applyAllFeatures();
+    });
+    vencordToggle.addEventListener('change', () => {
+      setSetting(VENCORD_KEY, vencordToggle.checked);
+      applyAllFeatures();
+    });
+    nightToggle.addEventListener('change', () => {
+      setSetting(NIGHT_KEY, nightToggle.checked);
+      applyAllFeatures();
+    });
+    nightTemp.addEventListener('input', () => {
+      nightVal.textContent = nightTemp.value + 'K';
+      setSetting(NIGHT_TEMP_KEY, nightTemp.value);
+      if (nightToggle.checked) applyAllFeatures();
+    });
+    fontSelect.addEventListener('change', () => {
+      setSetting(FONT_KEY, fontSelect.value);
+      applyAllFeatures();
+    });
+    screenshotBtn.addEventListener('click', () => {
+      handleScreenshotRequest(iframe);
+    });
+    addUserscriptBtn.addEventListener('click', () => openUserScriptModal(null));
+
+    window.addEventListener("hashchange", () => {
+      const input = decodeURIComponent(location.hash.slice(1).trim());
+      document.getElementById("urlInput").value = input;
+      loadIframeWithUrl(input);
+    });
+
+    fetchUserScripts();
+
+    if (!window.html2canvas) {
+      var script = document.createElement('script');
+      script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+      script.crossOrigin = "anonymous";
+      document.head.appendChild(script);
+    }
+
+    // Initial load
+    let hash = location.hash.slice(1);
+    loadIframeWithUrl(decodeURIComponent(hash));
+  });
+}
+
+main();
+</script>
+</body>
+</html>
