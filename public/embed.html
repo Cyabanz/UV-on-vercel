@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ultraviolet Embed</title>
   <link rel="icon" type="image/png" href="uv/favicon.ico" id="dynamic-favicon">
   <style>
     html, body { margin:0; padding:0; width:100vw; height:100vh; background:#18191a; }
@@ -43,15 +44,15 @@
       color: #fff;
     }
   </style>
-  <script src="uv/uv.bundle.js"></script>
-  <script src="uv/uv.config.js"></script>
-  <script src="register-sw.js"></script>
 </head>
 <body>
 <script>
 "use strict";
 
-// ======= Extension Panel + Injection Helpers =======
+// ===================== Settings =====================
+const PROXY_PREFIX = "/service/";
+
+// ===================== Extension Panel & Helpers =====================
 function addExtensionPanel() {
   if (document.getElementById('uv-extensions-panel')) return;
   const panel = document.createElement('div');
@@ -105,13 +106,9 @@ function addExtensionPanel() {
   `;
   document.body.appendChild(panel);
 
-  // --- Make panel draggable ---
   makePanelDraggable(panel, document.getElementById('uv-extensions-panel-header'));
-
-  // --- Close button ---
   document.getElementById('uv-extensions-panel-close').onclick = function() {
     panel.style.display = "none";
-    // Add a floating button to re-open
     if (!document.getElementById("uv-extensions-open-btn")) {
       const btn = document.createElement("button");
       btn.id = "uv-extensions-open-btn";
@@ -138,11 +135,8 @@ function addExtensionPanel() {
     }
   };
 }
-
-// --- Draggable panel helper ---
 function makePanelDraggable(panel, header) {
   let offsetX = 0, offsetY = 0, startX = 0, startY = 0, dragging = false;
-
   header.onmousedown = function(e) {
     dragging = true;
     startX = e.clientX;
@@ -154,7 +148,6 @@ function makePanelDraggable(panel, header) {
     document.addEventListener('mousemove', dragMove);
     document.addEventListener('mouseup', dragEnd);
   };
-
   function dragMove(e) {
     if (!dragging) return;
     panel.style.left = (e.clientX - offsetX) + "px";
@@ -163,7 +156,6 @@ function makePanelDraggable(panel, header) {
     panel.style.bottom = "";
     panel.style.position = "fixed";
   }
-
   function dragEnd() {
     dragging = false;
     document.body.style.userSelect = "";
@@ -420,8 +412,7 @@ function handleScreenshotRequest(iframe) {
   }
 }
 
-// ========== MAIN PATCH ==========
-
+// ========== Title & Favicon from iframe ==========
 function setTitleAndFaviconFromIframe(iframe) {
   try {
     const doc = iframe.contentDocument;
@@ -440,9 +431,8 @@ function setTitleAndFaviconFromIframe(iframe) {
     if (iconLink && iconLink.href) {
       faviconUrl = iconLink.href;
       if (faviconUrl.startsWith('/')) {
-        let proxiedSrc = iframe.src.replace(location.origin + __uv$config.prefix, '');
-        let decodedDest = __uv$config.decodeUrl(proxiedSrc);
-        let urlObj = new URL(decodedDest);
+        let proxiedSrc = iframe.src.replace(location.origin + PROXY_PREFIX, '');
+        let urlObj = new URL('https://' + proxiedSrc.split('/')[0]);
         faviconUrl = urlObj.origin + faviconUrl;
       }
     }
@@ -462,126 +452,117 @@ function setTitleAndFaviconFromIframe(iframe) {
   }
 }
 
-function main() {
-  let destination = "";
-  try {
-    let raw = location.hash.slice(1).trim();
-    if (!/^https?:\/\//i.test(raw)) {
-      if (raw.indexOf('.') !== -1) {
-        raw = 'https://' + raw;
-      } else {
-        raw = 'https://duckduckgo.com/?q=' + encodeURIComponent(raw);
-      }
+// ========== Main Proxy Embed Logic (server-side proxy, works everywhere) ==========
+function getTargetUrl(raw) {
+  raw = (raw || "").trim();
+  if (!raw) return "https://duckduckgo.com";
+  if (!/^https?:\/\//i.test(raw)) {
+    if (raw.indexOf('.') !== -1) {
+      raw = 'https://' + raw;
+    } else {
+      raw = 'https://duckduckgo.com/?q=' + encodeURIComponent(raw);
     }
-    destination = new URL(raw).toString();
-  } catch (err) {
-    alert(`Bad # string or bad URL. Got error:\n${err}`);
-    throw err;
+  }
+  return raw;
+}
+function proxiedSrc(url) {
+  // Use /service/https:/example.com
+  return PROXY_PREFIX + url.replace(/^https?:\/\//, "");
+}
+function main() {
+  let hash = location.hash.slice(1);
+  let destUrl = getTargetUrl(hash);
+  const iframe = document.createElement("iframe");
+  iframe.id = "uv-iframe";
+  iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups";
+  iframe.allowFullscreen = true;
+  iframe.style.width = "100vw";
+  iframe.style.height = "100vh";
+  iframe.style.border = "none";
+  iframe.src = proxiedSrc(destUrl);
+  document.body.innerHTML = "";
+  document.body.appendChild(iframe);
+
+  // Add Extension Panel
+  addExtensionPanel();
+
+  // --- UI Controls ---
+  const darkToggle = document.getElementById('enable-darkmode');
+  const vencordToggle = document.getElementById('enable-vencord');
+  const nightToggle = document.getElementById('enable-nightshift');
+  const nightTemp = document.getElementById('nightshift-temp');
+  const nightVal = document.getElementById('nightshift-val');
+  const fontSelect = document.getElementById('font-select');
+  const screenshotBtn = document.getElementById('screenshot-btn');
+  const addUserscriptBtn = document.getElementById('add-userscript-btn');
+
+  darkToggle.checked = getSetting(DARK_KEY, true);
+  vencordToggle.checked = getSetting(VENCORD_KEY, true);
+  nightToggle.checked = getSetting(NIGHT_KEY, false);
+  nightTemp.value = getSetting(NIGHT_TEMP_KEY, 3700);
+  nightVal.textContent = nightTemp.value + 'K';
+  fontSelect.value = getSetting(FONT_KEY, "");
+
+  function applyAllFeatures() {
+    if (!iframe.contentDocument) return;
+    if (darkToggle.checked) injectDarkMode(iframe); else removeDarkMode(iframe);
+    if (nightToggle.checked) injectNightShift(iframe, parseInt(nightTemp.value));
+    else removeNightShift(iframe);
+    if (fontSelect.value) injectFont(iframe, fontSelect.value);
+    else removeFont(iframe);
+    let host = "";
+    try {
+      let proxiedSrcStr = iframe.src.replace(location.origin + PROXY_PREFIX, '');
+      host = proxiedSrcStr.split('/')[0];
+    } catch (e) {}
+    if (host === "discord.com" && vencordToggle.checked) {
+      injectVencord(iframe);
+    }
+    injectUserScripts(iframe);
   }
 
-  registerSW()
-    .then(() => {
-      const iframe = document.createElement('iframe');
-      iframe.id = "uv-iframe";
-      iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups";
-      iframe.allowFullscreen = true;
-      iframe.style.width = "100vw";
-      iframe.style.height = "100vh";
-      iframe.style.border = "none";
-      iframe.src = __uv$config.prefix + __uv$config.encodeUrl(destination);
-      document.body.innerHTML = "";
-      document.body.appendChild(iframe);
+  darkToggle.addEventListener('change', () => {
+    setSetting(DARK_KEY, darkToggle.checked);
+    applyAllFeatures();
+  });
+  vencordToggle.addEventListener('change', () => {
+    setSetting(VENCORD_KEY, vencordToggle.checked);
+    applyAllFeatures();
+  });
+  nightToggle.addEventListener('change', () => {
+    setSetting(NIGHT_KEY, nightToggle.checked);
+    applyAllFeatures();
+  });
+  nightTemp.addEventListener('input', () => {
+    nightVal.textContent = nightTemp.value + 'K';
+    setSetting(NIGHT_TEMP_KEY, nightTemp.value);
+    if (nightToggle.checked) applyAllFeatures();
+  });
+  fontSelect.addEventListener('change', () => {
+    setSetting(FONT_KEY, fontSelect.value);
+    applyAllFeatures();
+  });
+  screenshotBtn.addEventListener('click', () => {
+    handleScreenshotRequest(iframe);
+  });
+  addUserscriptBtn.addEventListener('click', () => openUserScriptModal(null));
 
-      // Add Extension Panel
-      addExtensionPanel();
+  iframe.addEventListener('load', function() {
+    setTimeout(() => setTitleAndFaviconFromIframe(iframe), 100);
+    applyAllFeatures();
+  });
 
-      // --- UI Controls ---
-      const darkToggle = document.getElementById('enable-darkmode');
-      const vencordToggle = document.getElementById('enable-vencord');
-      const nightToggle = document.getElementById('enable-nightshift');
-      const nightTemp = document.getElementById('nightshift-temp');
-      const nightVal = document.getElementById('nightshift-val');
-      const fontSelect = document.getElementById('font-select');
-      const screenshotBtn = document.getElementById('screenshot-btn');
-      const addUserscriptBtn = document.getElementById('add-userscript-btn');
+  fetchUserScripts();
 
-      darkToggle.checked = getSetting(DARK_KEY, true);
-      vencordToggle.checked = getSetting(VENCORD_KEY, true);
-      nightToggle.checked = getSetting(NIGHT_KEY, false);
-      nightTemp.value = getSetting(NIGHT_TEMP_KEY, 3700);
-      nightVal.textContent = nightTemp.value + 'K';
-      fontSelect.value = getSetting(FONT_KEY, "");
-
-      function applyAllFeatures() {
-        if (!iframe.contentDocument) return;
-        if (darkToggle.checked) injectDarkMode(iframe); else removeDarkMode(iframe);
-        if (nightToggle.checked) injectNightShift(iframe, parseInt(nightTemp.value));
-        else removeNightShift(iframe);
-        if (fontSelect.value) injectFont(iframe, fontSelect.value);
-        else removeFont(iframe);
-        let host = "";
-        try {
-          const proxiedSrc = iframe.src;
-          let rawPath = proxiedSrc.replace(location.origin + __uv$config.prefix, '');
-          const decodedDest = __uv$config.decodeUrl(rawPath);
-          host = new URL(decodedDest).host;
-        } catch (e) {}
-        if (host === "discord.com" && vencordToggle.checked) {
-          injectVencord(iframe);
-        }
-        injectUserScripts(iframe);
-      }
-
-      darkToggle.addEventListener('change', () => {
-        setSetting(DARK_KEY, darkToggle.checked);
-        applyAllFeatures();
-      });
-      vencordToggle.addEventListener('change', () => {
-        setSetting(VENCORD_KEY, vencordToggle.checked);
-        applyAllFeatures();
-      });
-      nightToggle.addEventListener('change', () => {
-        setSetting(NIGHT_KEY, nightToggle.checked);
-        applyAllFeatures();
-      });
-      nightTemp.addEventListener('input', () => {
-        nightVal.textContent = nightTemp.value + 'K';
-        setSetting(NIGHT_TEMP_KEY, nightTemp.value);
-        if (nightToggle.checked) applyAllFeatures();
-      });
-      fontSelect.addEventListener('change', () => {
-        setSetting(FONT_KEY, fontSelect.value);
-        applyAllFeatures();
-      });
-      screenshotBtn.addEventListener('click', () => {
-        handleScreenshotRequest(iframe);
-      });
-      addUserscriptBtn.addEventListener('click', () => openUserScriptModal(null));
-
-      iframe.addEventListener('load', function() {
-        setTimeout(() => setTitleAndFaviconFromIframe(iframe), 100);
-        applyAllFeatures();
-      });
-
-      fetchUserScripts();
-
-      if (!window.html2canvas) {
-        var script = document.createElement('script');
-        script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-        script.crossOrigin = "anonymous";
-        document.head.appendChild(script);
-      }
-    })
-    .catch((err) => {
-      alert(`Encountered error:\n${err}`);
-    });
+  if (!window.html2canvas) {
+    var script = document.createElement('script');
+    script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    script.crossOrigin = "anonymous";
+    document.head.appendChild(script);
+  }
 }
 
-function ready(fn) {
-  if (typeof Ultraviolet !== "undefined" && typeof __uv$config !== "undefined" && typeof registerSW !== "undefined") fn();
-  else setTimeout(() => ready(fn), 20);
-}
-ready(main);
+main();
 </script>
 </body>
 </html>
